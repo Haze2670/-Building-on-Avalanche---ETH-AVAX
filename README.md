@@ -1,53 +1,155 @@
 # -Building-on-Avalanche---ETH-AVAX
 
-DegenToken Smart Contract
-Overview
-The DegenToken contract is an ERC20-based token implemented in Solidity. It extends the ERC20 standard with additional features including token burning, pausing, and a simple store for redeemable items. This contract is built using OpenZeppelin's library to ensure security and best practices.
+1. Open Remix IDE 
+Navigate to Remix: Open your browser and go to Remix IDE.
 
-Features
-ERC20 Token: Standard functionality for creating and managing ERC20 tokens.
-Burnable: Allows users to burn (destroy) their tokens.
-Pausable: Enables the contract owner to pause and unpause the contract, halting all token transfers and other state-changing operations.
-ReentrancyGuard: Prevents reentrancy attacks on sensitive functions.
-Store Items: Users can redeem tokens for predefined store items.
-Contract Details
-Name: Haze
-Symbol: HZE
-Decimals: 0 (No fractional tokens)
-Functions
-Minting
-mint(address to, uint256 amount): Mints new tokens to the specified address. Callable only by the contract owner and when not paused.
-Token Transfer
-transferTokens(address receiver, uint256 value): Transfers tokens from the sender to the receiver. Callable when not paused and non-reentrant.
-Token Burning
-burnTokens(uint256 value): Burns tokens from the sender’s account. Callable when not paused and non-reentrant.
-Token Redemption
-redeemTokens(uint256 itemId): Allows users to redeem tokens for items from the store. The item’s cost is burned from the user’s balance. Callable when not paused and non-reentrant.
-Balance Queries
-getBalance(): Returns the balance of the sender’s account.
-getBalanceOf(address account): Returns the balance of the specified account.
-Store Items
-showStoreItems(): Displays a list of available store items, their IDs, names, and costs in tokens.
-Contract Control
-pause(): Pauses the contract, disabling state-changing functions. Callable only by the contract owner.
-unpause(): Unpauses the contract, re-enabling state-changing functions. Callable only by the contract owner.
-Store Items
-The following items are available for redemption:
+2. Create a New File
 
-Rare Mouse pad - 20 Tokens
-Signed T-shirt - 100 Tokens
-Backpack - 150 Tokens
-PS5 - 300 Tokens
-Exclusive trip - 400 Tokens
-Usage
-Deployment
-Deploy the contract using Remix, selecting the appropriate Solidity version (0.8.20 or higher) and configuring the environment to use the desired network (e.g., Remix VM, Injected Web3).
+Create a New File: In the Remix IDE, go to the "File Explorers" tab on the left sidebar and click on the "+" icon to create a new file.
+Name the File: Enter DegenToken.sol as the filename and click "OK".
 
-Interaction
-After deployment, interact with the contract using the provided functions. Ensure the contract is not paused to perform transactions.
+3. Paste The code
 
-Security
-This contract uses OpenZeppelin’s well-tested contracts for security. However, always review and test thoroughly before deploying to production.
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.20;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+
+contract DegenToken is ERC20, Ownable, ERC20Burnable, Pausable, ReentrancyGuard {
+    event ItemRedeemed(address indexed user, uint256 itemId, uint256 cost);
+
+    struct StoreItem {
+        uint256 itemId;
+        string itemName;
+        uint256 cost;
+    }
+
+    StoreItem[] public storeItems;
+
+    constructor() ERC20("Haze", "HZE") {
+        _initializeStoreItems();
+    }
+
+    function mint(address to, uint256 amount) external onlyOwner whenNotPaused {
+        _mint(to, amount);
+    }
+
+    function decimals() public pure override returns (uint8) {
+        return 0;
+    }
+
+    function transferTokens(address receiver, uint256 value) external whenNotPaused nonReentrant {
+        _transfer(msg.sender, receiver, value);
+    }
+
+    function burnTokens(uint256 value) external whenNotPaused nonReentrant {
+        _burn(msg.sender, value);
+    }
+
+    function redeemTokens(uint256 itemId) external whenNotPaused nonReentrant {
+        uint256 cost = _getItemCost(itemId);
+        require(balanceOf(msg.sender) >= cost, "Insufficient tokens.");
+        _burn(msg.sender, cost);
+        emit ItemRedeemed(msg.sender, itemId, cost);
+    }
+
+    function getBalance() external view returns (uint256) {
+        return balanceOf(msg.sender);
+    }
+
+    function getBalanceOf(address account) external view returns (uint256) {
+        return balanceOf(account);
+    }
+
+    function showStoreItems() external view returns (string memory) {
+        string memory items = "Available Store Items:\n";
+        for (uint i = 0; i < storeItems.length; i++) {
+            items = string(abi.encodePacked(items, 
+                _uintToStr(storeItems[i].itemId), ". ", 
+                storeItems[i].itemName, ": ", 
+                _uintToStr(storeItems[i].cost), " Tokens\n"
+            ));
+        }
+        return items;
+    }
+
+    function _initializeStoreItems() internal {
+        storeItems.push(StoreItem(1, "Rare Mouse pad", 20));
+        storeItems.push(StoreItem(2, "Signed T-shirt", 100));
+        storeItems.push(StoreItem(3, "Backpack", 150));
+        storeItems.push(StoreItem(4, "PS5", 300));
+        storeItems.push(StoreItem(5, "Exclusive trip", 400));
+    }
+
+    function _getItemCost(uint256 itemId) internal view returns (uint256) {
+        for (uint i = 0; i < storeItems.length; i++) {
+            if (storeItems[i].itemId == itemId) {
+                return storeItems[i].cost;
+            }
+        }
+        revert("Invalid item ID.");
+    }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    function _uintToStr(uint _i) internal pure returns (string memory) {
+        if (_i == 0) return "0";
+        uint j = _i;
+        uint len;
+        while (j != 0) { len++; j /= 10; }
+        bytes memory bstr = new bytes(len);
+        uint k = len;
+        while (_i != 0) {
+            k--;
+            bstr[k] = bytes1(uint8(48 + _i % 10));
+            _i /= 10;
+        }
+        return string(bstr);
+    }
+}
+
+
+4. Compile the Contract
+Open the Solidity Compiler: Click on the "Solidity Compiler" tab on the left sidebar (the one with the Solidity logo).
+Select Compiler Version: Ensure the compiler version matches 0.8.20. If not, select the correct version from the dropdown menu.
+Compile: Click on the "Compile DegenToken.sol" button to compile your contract.
+
+5. Deploy the Contract
+Open the Deploy & Run Transactions Tab: Click on the "Deploy & Run Transactions" tab on the left sidebar.
+Environment: Select "Remix VM (London)" from the Environment dropdown. This will deploy the contract to a simulated Ethereum network.
+Deploy: Click on the "Deploy" button. This will deploy your DegenToken contract to the Remix VM.
+
+6. Interact with the Contract
+Once the contract is deployed, you will see it listed under "Deployed Contracts" in the "Deploy & Run Transactions" tab. You can now interact with your contract using the available functions:
+
+Mint Tokens: Use the mint function to create new tokens and assign them to a specific address. Input the address and amount, then click "transact".
+Transfer Tokens: Use the transferTokens function to send tokens from your address to another. Input the receiver address and amount, then click "transact".
+Burn Tokens: Use the burnTokens function to burn tokens from your account. Input the amount and click "transact".
+Redeem Tokens: Use the redeemTokens function to redeem tokens for store items. Input the item ID and click "transact".
+Get Balance: Use the getBalance function to view your token balance. Click "call" to see the result.
+Show Store Items: Use the showStoreItems function to display available store items. Click "call" to see the list of items.
+
+7. Test and Debug
+Test Functionality: Perform various operations to test the contract’s functionality, such as minting tokens, transferring, burning, and redeeming.
+Debug: Use the Remix debugger if you encounter any issues. Click on the "Debugger" tab to analyze transactions.
+
+Summary
+Open Remix IDE.
+Create a new file and paste your smart contract code.
+Compile the contract using the correct Solidity version.
+Deploy the contract to the Remix VM.
+Interact with the contract using provided functions.
+Test and debug as needed.
 
 Author
 Raymark
